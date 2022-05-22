@@ -3,6 +3,10 @@
 %flake8_on
 ```
 
+    The pycodestyle_magic extension is already loaded. To reload it, use:
+      %reload_ext pycodestyle_magic
+
+
 
 ```python
 import pandas as pd
@@ -15,14 +19,14 @@ from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 from Target_encoder import target_encoding
 import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.metrics import confusion_matrix, classification_report
+
 pd.set_option('display.max_columns', 100)
 pd.set_option('display.width', 500)
 np.random.seed(77)
-```
-
-
-```python
-
 ```
 
 # Chargement données
@@ -91,20 +95,18 @@ sns.histplot(df_train, x="target", kde=True)
 
 
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fe29dc9ff90>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7ff166d08390>
 
 
 
 
-![png](output_8_1.png)
-
+![png](output_7_1.png)
 
 La variable cible contient 4 classes sur le jeu d'entrainement.
 Les classes 2 et 3 sont sous representées.
 classe 3 : 0.00932 => très rare
 classe 2 : 0.15496
 Les classes 1 et 2 representent plus du 3/4 du dataset de train.
-
 
 ```python
 df_train.dtypes
@@ -139,9 +141,7 @@ df_train.dtypes
     dtype: object
 
 
-
-Un jeu de données contenant majoritairement des données categorielles
-
+Un jeu de données contenant majoritairement des données categorielles.
 
 ```python
 df_train.astype('object').describe().transpose()
@@ -341,10 +341,14 @@ df_train.astype('object').describe().transpose()
 </div>
 
 
-Possibilité de creer de nouvelles features à partir des variables qui peuvent etre transformées au format date.
+Ce tableau descriptif, nous donnes les informations sur le nombre unique de modalité des variables et affiche la valeur la plus representée de chaque variable.
+
+Il y'a la possibilité de créer de nouvelles features à partir des variables 
+qui peuvent etre transformées au format date.
 exemple : creation_date_request / creation_date_global.
 
-a voir si il y'a possibilité de creer des interactions entre les variables geographiques comme "ville" et "location". Location semble etre le departement, donc possiblité de recuperer une carto pour recuperer les regions de france.
+Il y'a possibilité de créer des interactions entre les variables geographiques comme "ville" et "location". Location semble être le departement, donc possiblité de récuperer une carto externe pour rappatrier les regions de france ou d'autres données externes en fonction de la clé location.
+
 
 ```python
 df_train.isnull().sum().sort_values(ascending = False)
@@ -379,10 +383,21 @@ df_train.isnull().sum().sort_values(ascending = False)
     dtype: int64
 
 
-Les variables "vegetable_type", "fruits_or_vegetables", "ville", "ctc" sont tres peu renseignées. 
-Pour les variables avec un taux de données manquantes des données manquantes raisonnable (inferieur à 30%), plusieurs moyen d'imputation de données sont possibles.
-Imputation par la moyenne, par la mediane, extrapolation lineaire par d'autres variables correlees et ensuite utiliser l'equation de la droite pour l'imputation de données peut etre une technique d'imputation.
-Des packages de sklearn "simple_imputer" ou autres existent aussi pour faciliter le traitement de données manquantes.
+
+    1:46: E251 unexpected spaces around keyword / parameter equals
+    1:48: E251 unexpected spaces around keyword / parameter equals
+
+Classement des variables par valeurs manquantes decroissantes.
+
+Les variables "vegetable_type", "fruits_or_vegetables", "ville", "ctc" sont très peu renseignées.
+
+Pour les variables des données manquantes raisonnable (inferieur à 30%), plusieurs moyen d'imputation de données sont possibles:
+    -Imputation par la moyenne ou par la mediane, 
+    -Imputation par extrapolation lineaire (correlation entre variable à imputer et variable corrélé)
+         Mettre en place un modele lineaire, si la tendance est linéaire, imputer les valeurs via l'equation de la droite.
+     - Conservation des valeurs manquantes qui peuvent aussi apporter de l'information lors de la modélisation.
+ 
+Des packages de sklearn "simple_imputer" existent aussi pour faciliter le traitement de données manquantes.
 
 ```python
 var = 'vegetable_type'
@@ -482,11 +497,19 @@ df_train.vegetable_type.value_counts(normalize=True, dropna=False)
     Name: vegetable_type, dtype: float64
 
 
-Nous pouvons nous poser la question de supprimer la variable vegetable_type qui est extrement mal renseigné et qui de premier abord ne pourra pas apporter de signal pour le modele.
-Cependant, je vais decider de la conserver car l'objectif est de classifier des données désequilibrer et nous avons pu voir que les classes 3 et 4 sont très rares. Le modele pourrait tirer un peu d'information des quelques valeurs renseignés de cette variable qui pourrait etre utilise à la prediction des classes 3 et 4.
+Nous pouvons nous poser la question de supprimer la variable vegetable_type qui est extrement mal renseignée et qui de premier abord ne pourra pas apporter de signal pour le modele.
+
+Cependant, je vais decider de la conserver car l'objectif est de classifier des données désequilibrées et nous avons pu voir que les classes 2 et 3 sont très rares. 
+
+Le modele pourrait extraire un peu d'information des quelques valeurs renseignés de cette variable qui pourrait être utilise à la prediction des classes 2 et 3.
 
 ```python
-df_train.groupby('target').agg({'vegetable_type': 'value_counts'})
+
+```
+
+
+```python
+df_train.groupby('target').agg({'fruits_or_vegetables': 'value_counts'})
 ```
 
 
@@ -511,104 +534,59 @@ df_train.groupby('target').agg({'vegetable_type': 'value_counts'})
     <tr style="text-align: right;">
       <th></th>
       <th></th>
-      <th>vegetable_type</th>
+      <th>fruits_or_vegetables</th>
     </tr>
     <tr>
       <th>target</th>
-      <th>vegetable_type</th>
+      <th>fruits_or_vegetables</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th rowspan="6" valign="top">0</th>
-      <th>green</th>
-      <td>113</td>
+      <th rowspan="2" valign="top">0</th>
+      <th>f</th>
+      <td>3137</td>
     </tr>
     <tr>
-      <th>salad</th>
-      <td>53</td>
+      <th>t</th>
+      <td>619</td>
     </tr>
     <tr>
-      <th>notsogreen</th>
-      <td>7</td>
+      <th rowspan="2" valign="top">1</th>
+      <th>f</th>
+      <td>2298</td>
     </tr>
     <tr>
-      <th>almostgreen</th>
-      <td>4</td>
+      <th>t</th>
+      <td>415</td>
     </tr>
     <tr>
-      <th>prettygreen</th>
-      <td>3</td>
+      <th rowspan="2" valign="top">2</th>
+      <th>f</th>
+      <td>918</td>
     </tr>
     <tr>
-      <th>verygreen</th>
-      <td>2</td>
+      <th>t</th>
+      <td>210</td>
     </tr>
     <tr>
-      <th rowspan="5" valign="top">1</th>
-      <th>green</th>
-      <td>45</td>
+      <th rowspan="2" valign="top">3</th>
+      <th>f</th>
+      <td>41</td>
     </tr>
     <tr>
-      <th>salad</th>
-      <td>31</td>
-    </tr>
-    <tr>
-      <th>notsogreen</th>
-      <td>16</td>
-    </tr>
-    <tr>
-      <th>prettygreen</th>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>verygreen</th>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th rowspan="5" valign="top">2</th>
-      <th>green</th>
-      <td>63</td>
-    </tr>
-    <tr>
-      <th>salad</th>
-      <td>44</td>
-    </tr>
-    <tr>
-      <th>notsogreen</th>
-      <td>11</td>
-    </tr>
-    <tr>
-      <th>prettygreen</th>
-      <td>4</td>
-    </tr>
-    <tr>
-      <th>verygreen</th>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th rowspan="4" valign="top">3</th>
-      <th>green</th>
-      <td>6</td>
-    </tr>
-    <tr>
-      <th>salad</th>
-      <td>5</td>
-    </tr>
-    <tr>
-      <th>notsogreen</th>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>prettygreen</th>
-      <td>1</td>
+      <th>t</th>
+      <td>21</td>
     </tr>
   </tbody>
 </table>
 </div>
 
 
+La variable fruits_or_vegetables est trés peu renseignés.
+Pour appuyer le fait de garder cette variable, je voulais voir si dans les classes 2 et 3 etaient bien alimentés pour que le modèle puisse extraire du signal sur cette variable.
+Je vais quand même la conserver dans un premier temps.
 
 # Nettoyage des données et création des features
 
@@ -618,6 +596,7 @@ df_train.groupby('target').agg({'vegetable_type': 'value_counts'})
 ```python
 # fonction pour parser une date
 def parsing_date(df, column):
+    
     df[f'day_{column}'] = df[column].dt.day
     df[f'week_{column}'] = df[column].dt.week
     df[f'month_{column}'] = df[column].dt.month
@@ -630,26 +609,25 @@ date_columns = [col for col in df_train.columns if "date" in col]
 
 # fonction pour appliquer les transformations sur base de train et de test
 def create_date_columns(df, columns):
+    
     for date_col in columns:
         df[date_col] = pd.to_datetime(df[date_col])
         df = parsing_date(df, date_col)
         df.drop(date_col, axis=1, inplace=True)
     return df
 
-df_test= create_date_columns(df_test, date_columns)
-df_train= create_date_columns(df_train, date_columns)                    
+df_test = create_date_columns(df_test, date_columns)
+df_train = create_date_columns(df_train, date_columns)                    
 ```
 
-    11:1: E305 expected 2 blank lines after class or function definition, found 1
-    14:1: E302 expected 2 blank lines, found 1
-    21:1: E305 expected 2 blank lines after class or function definition, found 1
-    21:8: E225 missing whitespace around operator
-    22:9: E225 missing whitespace around operator
+    3:1: W293 blank line contains whitespace
+    12:1: E305 expected 2 blank lines after class or function definition, found 1
+    15:1: E302 expected 2 blank lines, found 1
+    16:1: W293 blank line contains whitespace
+    23:1: E305 expected 2 blank lines after class or function definition, found 1
 
 
 ## Gestion des données catégorielles
-
-
 
 
 ```python
@@ -807,12 +785,12 @@ df_train[var_to_encode].describe().T
 
 
 #  Encoding
-Application du target encoding sur les données categorielles
-autres solution possible label encoding ou one hot encoding
-avantage du target encoding : eviter l'ordinalite que pourrait apporter un encodage du type label encoding
+2 techniques d'encoding vont être appliqués:
 
-Choix d'utiliser le target encoding pour les variables contenant plus de 3 modalités.
-Pour variables avec 3 ou 2 modalités, un one hot encoding sera appliqué.
+Application du target encoding sur les données categorielles à plus de 3 modalités.
+Avantage du target encoding : eviter l'ordinalite que pourrait apporter un encodage du type label encoding
+
+Application du one hot encoding sur les variables avec moins de 4 modalités.
 
 ```python
 var_to_encode_describe = df_train[var_to_encode].describe().T
@@ -820,7 +798,7 @@ var_to_encode_describe = df_train[var_to_encode].describe().T
 
 
 ```python
-# Recuperer dans une variable les noms de variables
+# Recuperer dans un objet les noms de variables.
 # pour lesquelles un one hot encoding sera appliqué
 var_to_one_hot = var_to_encode_describe[var_to_encode_describe.unique <= 3].index
 ```
@@ -828,16 +806,18 @@ var_to_one_hot = var_to_encode_describe[var_to_encode_describe.unique <= 3].inde
 
 ```python
 # Gestion des données manquantes avec un fillna par la modalité missing.
-# Le ohe creera une colonne specifique pour les données manquantes.
+# Le ohe créera une colonne specifique pour les données manquantes.
 # Un modele peut extraire de l'information sur des données non renseignés.
 
 df_train[var_to_one_hot] = df_train[var_to_one_hot].fillna("missing")
 df_test[var_to_one_hot] = df_test[var_to_one_hot].fillna("missing")
 ```
 
+## One hot encoding
+
 
 ```python
-# application du ohe
+# Application du ohe
 drop_enc = OneHotEncoder().fit(df_train[var_to_one_hot])
 
 df_train_ohe = drop_enc.transform(df_train[var_to_one_hot])
@@ -846,15 +826,15 @@ df_test_ohe = drop_enc.transform(df_test[var_to_one_hot])
 
 
 ```python
-# transformation de la matrice en format dataframe
+# Transformation de la matrice en format dataframe
 # concatenation des colonnes encodées
-# suppression des variables originales
+# Suppression des variables originales
 
 df_train.drop(var_to_one_hot, axis=1, inplace=True)
 
 df_train_ohe = pd.concat([pd.DataFrame.sparse.from_spmatrix
                           (df_train_ohe,
-                           columns=drop_enc.get_feature_names()),
+                           columns=drop_enc.get_feature_names_out()),
                            df_train],
                         axis=1)
 
@@ -862,15 +842,13 @@ df_test.drop(var_to_one_hot, axis=1, inplace=True)
 
 df_test_ohe = pd.concat([pd.DataFrame.sparse.from_spmatrix
                          (df_test_ohe, 
-                        columns=drop_enc.get_feature_names()),
+                        columns=drop_enc.get_feature_names_out()),
                         df_test], axis=1)
 
 
 
 ```
 
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/deprecation.py:87: FutureWarning: Function get_feature_names is deprecated; get_feature_names is deprecated in 1.0 and will be removed in 1.2. Please use get_feature_names_out instead.
-      warnings.warn(msg, category=FutureWarning)
     10:28: E127 continuation line over-indented for visual indent
     11:25: E128 continuation line under-indented for visual indent
     16:39: W291 trailing whitespace
@@ -879,6 +857,7 @@ df_test_ohe = pd.concat([pd.DataFrame.sparse.from_spmatrix
 
 
 ```python
+# resultat du one hot encoding
 df_train_ohe
 ```
 
@@ -903,21 +882,21 @@ df_train_ohe
   <thead>
     <tr style="text-align: right;">
       <th></th>
-      <th>x0_f</th>
-      <th>x0_t</th>
-      <th>x1_f</th>
-      <th>x1_missing</th>
-      <th>x1_t</th>
-      <th>x2_clementine</th>
-      <th>x2_poire</th>
-      <th>x3_f</th>
-      <th>x3_missing</th>
-      <th>x3_t</th>
-      <th>x4_football</th>
-      <th>x4_noball</th>
-      <th>x4_volleyball</th>
-      <th>x5_f</th>
-      <th>x5_t</th>
+      <th>AP_f</th>
+      <th>AP_t</th>
+      <th>ctc_f</th>
+      <th>ctc_missing</th>
+      <th>ctc_t</th>
+      <th>favorite_fruit_clementine</th>
+      <th>favorite_fruit_poire</th>
+      <th>fruits_or_vegetables_f</th>
+      <th>fruits_or_vegetables_missing</th>
+      <th>fruits_or_vegetables_t</th>
+      <th>hobby_football</th>
+      <th>hobby_noball</th>
+      <th>hobby_volleyball</th>
+      <th>green_vegetables_f</th>
+      <th>green_vegetables_t</th>
       <th>situation</th>
       <th>location</th>
       <th>gc_id</th>
@@ -1512,652 +1491,17 @@ df_train_ohe
 
 
 ```python
-df_test_ohe
-```
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>x0_f</th>
-      <th>x0_t</th>
-      <th>x1_f</th>
-      <th>x1_missing</th>
-      <th>x1_t</th>
-      <th>x2_clementine</th>
-      <th>x2_poire</th>
-      <th>x3_f</th>
-      <th>x3_missing</th>
-      <th>x3_t</th>
-      <th>x4_football</th>
-      <th>x4_noball</th>
-      <th>x4_volleyball</th>
-      <th>x5_f</th>
-      <th>x5_t</th>
-      <th>id</th>
-      <th>situation</th>
-      <th>location</th>
-      <th>gc_id</th>
-      <th>gc_label</th>
-      <th>id_group</th>
-      <th>id_group_2</th>
-      <th>fruit_situation_id</th>
-      <th>fruit_situation_label</th>
-      <th>number_of_fruit</th>
-      <th>id_group_3</th>
-      <th>id_group_4</th>
-      <th>ville</th>
-      <th>vegetable_type</th>
-      <th>day_creation_date_answer</th>
-      <th>week_creation_date_answer</th>
-      <th>month_creation_date_answer</th>
-      <th>year_creation_date_answer</th>
-      <th>hour_creation_date_answer</th>
-      <th>weekday_creation_date_answer</th>
-      <th>day_creation_date_global</th>
-      <th>week_creation_date_global</th>
-      <th>month_creation_date_global</th>
-      <th>year_creation_date_global</th>
-      <th>hour_creation_date_global</th>
-      <th>weekday_creation_date_global</th>
-      <th>day_creation_date_request</th>
-      <th>week_creation_date_request</th>
-      <th>month_creation_date_request</th>
-      <th>year_creation_date_request</th>
-      <th>hour_creation_date_request</th>
-      <th>weekday_creation_date_request</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>cb7a4e0dd0777</td>
-      <td>30</td>
-      <td>100</td>
-      <td>40</td>
-      <td>B</td>
-      <td>b6a3d931cbbaf</td>
-      <td>c9cc8f25f33cd</td>
-      <td>120</td>
-      <td>jzy</td>
-      <td>1</td>
-      <td>bc3a12cac647f</td>
-      <td>b78bd3c9f945c</td>
-      <td>Saint-Leu</td>
-      <td>NaN</td>
-      <td>13</td>
-      <td>11</td>
-      <td>3</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>2</td>
-      <td>13</td>
-      <td>11</td>
-      <td>3</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>2</td>
-      <td>13</td>
-      <td>11</td>
-      <td>3</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>e78e3915f3e30</td>
-      <td>-1</td>
-      <td>95</td>
-      <td>40</td>
-      <td>B</td>
-      <td>1b35749232404</td>
-      <td>cc429927fe144</td>
-      <td>50</td>
-      <td>hetz</td>
-      <td>1</td>
-      <td>79aa2c96bd0fc</td>
-      <td>6fed1653be26d</td>
-      <td>Créteil</td>
-      <td>NaN</td>
-      <td>7</td>
-      <td>2</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>13</td>
-      <td>0</td>
-      <td>18</td>
-      <td>51</td>
-      <td>12</td>
-      <td>2018</td>
-      <td>18</td>
-      <td>1</td>
-      <td>7</td>
-      <td>2</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>13</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>8e65ba155f983</td>
-      <td>-1</td>
-      <td>34</td>
-      <td>20</td>
-      <td>D</td>
-      <td>8f7612ff2c9cc</td>
-      <td>cfaf2bb299ac6</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>-1</td>
-      <td>4b634a698cc8e</td>
-      <td>fb7b5da2ef839</td>
-      <td>Bordeaux</td>
-      <td>NaN</td>
-      <td>25</td>
-      <td>4</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>4</td>
-      <td>17</td>
-      <td>3</td>
-      <td>1</td>
-      <td>2018</td>
-      <td>13</td>
-      <td>2</td>
-      <td>25</td>
-      <td>4</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>4</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>701e90ca03ce2</td>
-      <td>10</td>
-      <td>45</td>
-      <td>40</td>
-      <td>B</td>
-      <td>2e3620e03b5f3</td>
-      <td>bf01c06305abb</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>2</td>
-      <td>cccd30d947857</td>
-      <td>3a230e52fb02e</td>
-      <td>Saint-Herblain</td>
-      <td>NaN</td>
-      <td>16</td>
-      <td>3</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>2</td>
-      <td>7</td>
-      <td>45</td>
-      <td>11</td>
-      <td>2018</td>
-      <td>13</td>
-      <td>2</td>
-      <td>16</td>
-      <td>3</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>768fefec8609a</td>
-      <td>10</td>
-      <td>95</td>
-      <td>100</td>
-      <td>H</td>
-      <td>ac19c1e8abd0d</td>
-      <td>033ec37966b00</td>
-      <td>50</td>
-      <td>hetz</td>
-      <td>2</td>
-      <td>62769fb7addda</td>
-      <td>94c376f28ea60</td>
-      <td>Drancy</td>
-      <td>NaN</td>
-      <td>11</td>
-      <td>7</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>0</td>
-      <td>16</td>
-      <td>42</td>
-      <td>10</td>
-      <td>2018</td>
-      <td>10</td>
-      <td>1</td>
-      <td>11</td>
-      <td>7</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>14</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>...</th>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-    </tr>
-    <tr>
-      <th>24995</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>3232bad9c00cc</td>
-      <td>-1</td>
-      <td>60</td>
-      <td>10</td>
-      <td>A</td>
-      <td>95a56d824dd8e</td>
-      <td>3976c9fb3b227</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>0</td>
-      <td>62f3ff83bc692</td>
-      <td>cfdfc4bae9d99</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>11</td>
-      <td>7</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>9</td>
-      <td>0</td>
-      <td>8</td>
-      <td>6</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>15</td>
-      <td>4</td>
-      <td>11</td>
-      <td>7</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>9</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>24996</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>7b178c38ad263</td>
-      <td>-1</td>
-      <td>45</td>
-      <td>10</td>
-      <td>A</td>
-      <td>0a862475e1701</td>
-      <td>e3cb91abc2951</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>-1</td>
-      <td>cccd30d947857</td>
-      <td>f3c523cde1292</td>
-      <td>Nantes</td>
-      <td>NaN</td>
-      <td>23</td>
-      <td>4</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>9</td>
-      <td>2</td>
-      <td>18</td>
-      <td>51</td>
-      <td>12</td>
-      <td>2018</td>
-      <td>11</td>
-      <td>1</td>
-      <td>23</td>
-      <td>4</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>9</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>24997</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>5876ad905d4b4</td>
-      <td>-1</td>
-      <td>58</td>
-      <td>10</td>
-      <td>A</td>
-      <td>02d8284246fca</td>
-      <td>1c8dd807280e2</td>
-      <td>10</td>
-      <td>ae</td>
-      <td>-1</td>
-      <td>fa2eb9a81317a</td>
-      <td>c2ac6810f81b5</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>10</td>
-      <td>10</td>
-      <td>3</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>6</td>
-      <td>27</td>
-      <td>9</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>11</td>
-      <td>2</td>
-      <td>10</td>
-      <td>10</td>
-      <td>3</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>6</td>
-    </tr>
-    <tr>
-      <th>24998</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>5921ef2921c68</td>
-      <td>-1</td>
-      <td>60</td>
-      <td>20</td>
-      <td>D</td>
-      <td>68fb52f788708</td>
-      <td>598f3c91c3a8c</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>-1</td>
-      <td>eefd8c1c28728</td>
-      <td>aeaa1f918497c</td>
-      <td>NaN</td>
-      <td>green</td>
-      <td>27</td>
-      <td>9</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>16</td>
-      <td>2</td>
-      <td>9</td>
-      <td>32</td>
-      <td>8</td>
-      <td>2018</td>
-      <td>8</td>
-      <td>3</td>
-      <td>27</td>
-      <td>9</td>
-      <td>2</td>
-      <td>2019</td>
-      <td>16</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>24999</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>d4152ad641c9f</td>
-      <td>-1</td>
-      <td>13</td>
-      <td>20</td>
-      <td>D</td>
-      <td>74cf9d7a70893</td>
-      <td>671e1a9b1b3ad</td>
-      <td>200</td>
-      <td>ag</td>
-      <td>0</td>
-      <td>39fb2ab20dda9</td>
-      <td>beb82cec9ed17</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>1</td>
-      <td>1</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>1</td>
-      <td>31</td>
-      <td>44</td>
-      <td>10</td>
-      <td>2018</td>
-      <td>7</td>
-      <td>2</td>
-      <td>1</td>
-      <td>1</td>
-      <td>1</td>
-      <td>2019</td>
-      <td>7</td>
-      <td>1</td>
-    </tr>
-  </tbody>
-</table>
-<p>25000 rows × 47 columns</p>
-</div>
-
-
-
-
-```python
+# passage de la variable id en index, car ne doit pas être encoder
 df_test_ohe = df_test_ohe.set_index('id')
 
 ```
 
-# TE
+## Target encoding
 
 
 ```python
-var_to_te = var_to_encode_describe[var_to_encode_describe.unique>3].index
+var_to_te = var_to_encode_describe[var_to_encode_describe.unique > 3].index
 ```
-
-    1:65: E225 missing whitespace around operator
-
 
 
 ```python
@@ -2301,13 +1645,14 @@ df_train.groupby(var)['target'].agg(['mean', 'count', 'std'])
 </div>
 
 
-La variable gc_label contient 12 modalités (lettre A jusqu'a L). Nous pouvons visualiser les valeurs moyennes, de nombre et d'ecart type de chacune de ces lettres calculés en fonction de la target.
+La variable gc_label contient 12 modalités (lettre A jusqu'a L). 
+Nous pouvons visualiser les valeurs moyennes, de nombre et d'ecart type de chacune de ces lettres calculées en fonction de la target.
+
 La moyenne (Prior) de la target est de 0,69052. L'ojectif est maintenant de remplacer chacune de ces modalités par une valeurs moyenne que l'on va associé en fonction de la variable cible et de "l'effet de confiance".
 
 ```python
 # Application de la fonction target encoding
-# Cette fonction a été developpé par un proche
-# Fonction testés et utilisés à plusieurs reprises dans des projets
+
 encoding_gc_label, mapping_gc_label = target_encoding(df_train,
                                     serie='gc_label',
                                     target_name='target',
@@ -2321,22 +1666,26 @@ encoding_gc_label, mapping_gc_label = target_encoding(df_train,
 ![png](output_45_0.png)
 
 
+    4:37: E128 continuation line under-indented for visual indent
     5:37: E128 continuation line under-indented for visual indent
     6:37: E128 continuation line under-indented for visual indent
     7:37: E128 continuation line under-indented for visual indent
     8:37: E128 continuation line under-indented for visual indent
     9:37: E128 continuation line under-indented for visual indent
-    10:37: E128 continuation line under-indented for visual indent
 
 Ce graphe permet de determiner le seuil de confiance k à definir 
 pour permettre le calcul du prior pour les modalités à encoder.
 
-Par exemple, la modalité A est representé 13813 fois dans le dataset de train, si l'on fixe un seuil K de 10000, nous pouvons voir que la confiance accordé est d'uniquement de 50 %. Ce qui signifie que pour le calcul du prior(moyenne) à affecter à la modalité A, 50% de la valeur va etre calculé à partir de la moyenne de la sous population de la categorie A et 50 % restant seront calculés sur l'ensemble de données total du train (0.69052)
+Par exemple, la modalité A est representé 13813 fois dans le dataset de train, si l'on fixe un seuil K de 10000, nous pouvons voir que la confiance accordée est d'uniquement de 50 %. Ce qui signifie que pour le calcul du prior(moyenne) à affecter à la modalité A.
+
+Ce qui donne, $Enconding(A) = 0,5*prior + 0,5*posterior
+$prior = mean(y) dans le groupe de la modalité A.
+Mais sans utiliser la ligne en cours (bannir l'effet de la target directement sur la ligne a encoder).
 
 Le target encoding permet aussi de gerer les valeurs manquantes en appliquants la valeur moyenne de la target aux valeurs manquantes
 
 ```python
-#resultat de l'encoding
+# resultat de l'encoding
 mapping_gc_label
 ```
 
@@ -2358,25 +1707,26 @@ mapping_gc_label
      nan: 0.69052}
 
 
-
+Par manque de temps, nous allons appliquer le meme seuil de confiance à toutes les variables à encoder.
 
 ```python
 te_mapping = {}
 
 for var in var_to_te:
-    encoding, mapping = target_encoding(df_train, serie=var, target_name='target', k=10000, f=2000,
+    encoding, mapping = target_encoding(df_train, serie=var,
+                                        target_name='target',
+                                        k = 10000,
+                                        f = 2000,
                                         avec_viz=False, noise_level=0)
     te_mapping[var]= mapping
 ```
 
-    4:80: E501 line too long (99 > 79 characters)
-    6:20: E225 missing whitespace around operator
+    6:42: E251 unexpected spaces around keyword / parameter equals
+    6:44: E251 unexpected spaces around keyword / parameter equals
+    7:42: E251 unexpected spaces around keyword / parameter equals
+    7:44: E251 unexpected spaces around keyword / parameter equals
+    9:20: E225 missing whitespace around operator
 
-
-
-```python
-
-```
 
 
 ```python
@@ -2389,21 +1739,18 @@ def build_df_encoding(df, te_mapping):
 
 ```python
 df_train_te = build_df_encoding(df_train_ohe, te_mapping)
-df_test_te = build_df_encoding(df_test_ohe,te_mapping)
-```
-
-    2:43: E231 missing whitespace after ','
-
-
-
-```python
-
+df_test_te = build_df_encoding(df_test_ohe, te_mapping)
 ```
 
 
 ```python
-
+print(df_train_te.shape)
+print(df_test_te.shape)
 ```
+
+    (25000, 47)
+    (25000, 46)
+
 
 
 ```python
@@ -2431,21 +1778,21 @@ df_train_te.head(3)
   <thead>
     <tr style="text-align: right;">
       <th></th>
-      <th>x0_f</th>
-      <th>x0_t</th>
-      <th>x1_f</th>
-      <th>x1_missing</th>
-      <th>x1_t</th>
-      <th>x2_clementine</th>
-      <th>x2_poire</th>
-      <th>x3_f</th>
-      <th>x3_missing</th>
-      <th>x3_t</th>
-      <th>x4_football</th>
-      <th>x4_noball</th>
-      <th>x4_volleyball</th>
-      <th>x5_f</th>
-      <th>x5_t</th>
+      <th>AP_f</th>
+      <th>AP_t</th>
+      <th>ctc_f</th>
+      <th>ctc_missing</th>
+      <th>ctc_t</th>
+      <th>favorite_fruit_clementine</th>
+      <th>favorite_fruit_poire</th>
+      <th>fruits_or_vegetables_f</th>
+      <th>fruits_or_vegetables_missing</th>
+      <th>fruits_or_vegetables_t</th>
+      <th>hobby_football</th>
+      <th>hobby_noball</th>
+      <th>hobby_volleyball</th>
+      <th>green_vegetables_f</th>
+      <th>green_vegetables_t</th>
       <th>situation</th>
       <th>location</th>
       <th>gc_id</th>
@@ -2637,9 +1984,617 @@ df_train_te.head(3)
 
 
 
+# Modelisation
+
 
 ```python
-df_test_te.head(3)
+# split train test
+X = df_train_te.drop('target', axis=1)
+y = df_train_te.target
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 77, stratify=y)
+```
+
+    6:68: E251 unexpected spaces around keyword / parameter equals
+    6:70: E251 unexpected spaces around keyword / parameter equals
+    6:88: E251 unexpected spaces around keyword / parameter equals
+    6:90: E251 unexpected spaces around keyword / parameter equals
+
+Pour cet exercice de classification multi-class,je vais comparer les performances de deux algorithmes:
+    - random forest
+    - xgboost 
+    
+Les hyperparametres pour le tuning de ces modeles vont se faire par gridsearch ou randomsearch avec une cross validation cv=5 pour reduire l'overfitting.
+
+La fonction de cout choisie pour minimiser les erreurs est la log_loss.
+L'objectif est de minimiser la valeur du log loss. La valeur du parametre scoring du grid et du randomsearch est "neg_log_loss".
+
+Etant donné que nous avons un jeu de données ultra déséquilibré, j'ai ajouté le parametre stratify lors du split en train test pour retrouver une répartition équivalente au jeu d'entrainement dans chaque k-fold.
+
+D'apres l'enoncé, la fonction de perte doit compter d'avantage pour les classes elevées.
+Pour penaliser les classes en puissance de 10, la solution la plus rapide etant d'utiliser le parametre sample_weight lors de l'application du fit. 
+Contrainte : Yi : 0 1 2 3
+                  10 10 10 10
+            Wi: 10 100 1000 1000
+            
+Le parametre sample_weight permet de dupliquer des lignes (oversampling) et donc d'appliquer une penalités pour les classes elevées.
+               
+## Random Forest classifier
+
+
+```python
+rfc=RandomForestClassifier(random_state = 77)
+```
+
+    1:4: E225 missing whitespace around operator
+    1:40: E251 unexpected spaces around keyword / parameter equals
+    1:42: E251 unexpected spaces around keyword / parameter equals
+
+
+
+```python
+%%time
+
+#param_grid ={
+#    'n_estimators': [500,800,1000],
+#    'max_features':['auto'],
+#    'max_depth':[5 ,8, 10, 12],
+#    'criterion':['gini']
+
+#}
+
+param_grid ={
+    'n_estimators': [1000],
+    'max_features':['auto'],
+    'max_depth':[12],
+    'criterion':['gini']
+
+}
+#cv_rfc = GridSearchCV(rfc, param_grid,cv=10, scoring='neg_log_loss',verbose=1)
+
+cv_rfc = RandomizedSearchCV(estimator=rfc,
+                         param_distributions=param_grid,
+                         scoring='neg_log_loss',
+                         n_iter=5,
+                         verbose=1,)
+
+
+
+
+```
+
+    CPU times: user 19 µs, sys: 1 µs, total: 20 µs
+    Wall time: 23.8 µs
+
+Le temps d'execution du grid search etait long (plus de 30 min), j'ai donc decidé d'utiliser un randomsearch pour diminuer le temps.
+
+```python
+cv_rfc 
+```
+
+
+
+
+    RandomizedSearchCV(estimator=RandomForestClassifier(random_state=77), n_iter=5,
+                       param_distributions={'criterion': ['gini'],
+                                            'max_depth': [5, 8, 10, 12],
+                                            'max_features': ['auto'],
+                                            'n_estimators': [500, 800, 1000]},
+                       scoring='neg_log_loss', verbose=1)
+
+
+
+
+```python
+%%time
+cv_rfc.fit(X_train,y_train, sample_weight=10**y_train )
+```
+
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/model_selection/_search.py:296: UserWarning: The total space of parameters 1 is smaller than n_iter=5. Running 1 iterations. For exhaustive searches, use GridSearchCV.
+      UserWarning,
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+
+
+    Fitting 5 folds for each of 1 candidates, totalling 5 fits
+
+
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+
+
+    CPU times: user 1min 26s, sys: 1.25 s, total: 1min 27s
+    Wall time: 1min 28s
+
+
+
+
+
+    RandomizedSearchCV(estimator=RandomForestClassifier(random_state=77), n_iter=5,
+                       param_distributions={'criterion': ['gini'],
+                                            'max_depth': [12],
+                                            'max_features': ['auto'],
+                                            'n_estimators': [1000]},
+                       scoring='neg_log_loss', verbose=1)
+
+
+
+
+```python
+cv_rfc.best_params_
+```
+
+
+
+
+    {'n_estimators': 1000,
+     'max_features': 'auto',
+     'max_depth': 12,
+     'criterion': 'gini'}
+
+
+
+
+```python
+cv_rfc.best_estimator_
+```
+
+
+
+
+    RandomForestClassifier(max_depth=12, n_estimators=1000, random_state=77)
+
+
+
+
+```python
+
+rfc1=RandomForestClassifier(random_state=77, **cv_rfc.best_params_)
+```
+
+    2:5: E225 missing whitespace around operator
+
+
+
+```python
+rfc1.fit(X_train, y_train, sample_weight=10**y_train )
+```
+
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+
+
+
+
+
+    RandomForestClassifier(max_depth=12, n_estimators=1000, random_state=77)
+
+
+
+    1:53: E202 whitespace before ')'
+
+
+
+```python
+pred_rfc = rfc1.predict(X_test)
+preds_rfc_prob = rfc1.predict_proba(X_test)
+```
+
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
+      "pandas.DataFrame with sparse columns found."
+
+
+
+```python
+
+print(classification_report(pred_rfc, y_test))
+```
+
+                  precision    recall  f1-score   support
+    
+               0       0.35      0.98      0.51       854
+               1       0.66      0.70      0.68      1640
+               2       0.93      0.29      0.44      2484
+               3       0.17      0.36      0.23        22
+    
+        accuracy                           0.54      5000
+       macro avg       0.53      0.58      0.47      5000
+    weighted avg       0.74      0.54      0.53      5000
+    
+
+
+
+```python
+print("log loss pour RF classifier sur train:", log_loss(y_test, preds_rfc_prob))
+```
+
+    log loss pour RF classifier sur train: 1.0261444717347372
+
+
+
+```python
+confusion_matrix(pred_rfc, y_test)
+```
+
+
+
+
+    array([[ 839,   11,    4,    0],
+           [ 439, 1155,   44,    2],
+           [1135,  593,  719,   37],
+           [   2,    4,    8,    8]])
+
+
+Le modele peut etre mieux, nous pouvons voir que la classe 0 bien predite. 
+Seulement 15 observations sont classés en classe 1 et 2.
+
+Sur la classe 2, 30% des observations sont predites dans la classe 0 au lieu de la classe 2.
+
+La qualité de la classification est mauvaise sur la classe 3, la majorité de la classe 2 se retrouve en classe 1 et 0.
+
+Concernant la classe 3 et le peu de volume, le modele ne semble pas capter assez d'information.
+
+```python
+def plot_feature_importance(df,model):
+    
+    importances = model.best_estimator_.feature_importances_
+    print()
+    std = np.std([tree.feature_importances_ for tree in model.best_estimator_.estimators_],axis=0)
+    indices = np.argsort(importances)[::-1]
+    print(len(indices))
+    print(len(df.columns))
+    names = [df.columns[i] for i in indices]
+    
+    # Print the feature ranking
+    
+    print("Feature ranking:")
+    for f in range(X_test.shape[1]):
+        print("%d. feature name: %s (%f)" % (f + 1, names[f], importances[indices[f]]))
+        
+    # Plot the feature importances of the forest
+    plt.figure(figsize=(16,12))
+    plt.title("Feature importances")
+    plt.bar(range(df.shape[1]), importances[indices],color="r", yerr=std[indices], align="center")
+    plt.xticks(range(df.shape[1]), names, rotation=90)
+    plt.xlim([-1,df.shape[1]])
+    return plt.show()
+```
+
+    1:31: E231 missing whitespace after ','
+    2:1: W293 blank line contains whitespace
+    5:80: E501 line too long (98 > 79 characters)
+    5:91: E231 missing whitespace after ','
+    10:1: W293 blank line contains whitespace
+    12:1: W293 blank line contains whitespace
+    15:80: E501 line too long (87 > 79 characters)
+    16:1: W293 blank line contains whitespace
+    18:27: E231 missing whitespace after ','
+    20:53: E231 missing whitespace after ','
+    20:80: E501 line too long (98 > 79 characters)
+    22:17: E231 missing whitespace after ','
+
+
+
+```python
+plot_feature_importance(X_train, cv_rfc)
+```
+
+    
+    46
+    46
+    Feature ranking:
+    1. feature name: location (0.123418)
+    2. feature name: id_group_3 (0.083700)
+    3. feature name: id_group_4 (0.061332)
+    4. feature name: id_group (0.061122)
+    5. feature name: id_group_2 (0.061093)
+    6. feature name: week_creation_date_global (0.045752)
+    7. feature name: day_creation_date_global (0.038637)
+    8. feature name: hour_creation_date_answer (0.035005)
+    9. feature name: hour_creation_date_request (0.034187)
+    10. feature name: hour_creation_date_global (0.032175)
+    11. feature name: month_creation_date_global (0.032024)
+    12. feature name: day_creation_date_request (0.031403)
+    13. feature name: fruit_situation_id (0.030072)
+    14. feature name: day_creation_date_answer (0.030033)
+    15. feature name: fruit_situation_label (0.029784)
+    16. feature name: weekday_creation_date_global (0.025467)
+    17. feature name: weekday_creation_date_request (0.024799)
+    18. feature name: weekday_creation_date_answer (0.024700)
+    19. feature name: ville (0.023381)
+    20. feature name: week_creation_date_answer (0.022347)
+    21. feature name: week_creation_date_request (0.021739)
+    22. feature name: gc_label (0.019984)
+    23. feature name: gc_id (0.017170)
+    24. feature name: year_creation_date_global (0.010732)
+    25. feature name: number_of_fruit (0.010618)
+    26. feature name: month_creation_date_request (0.008194)
+    27. feature name: month_creation_date_answer (0.008030)
+    28. feature name: favorite_fruit_clementine (0.007263)
+    29. feature name: situation (0.006655)
+    30. feature name: favorite_fruit_poire (0.006355)
+    31. feature name: fruits_or_vegetables_missing (0.005242)
+    32. feature name: ctc_f (0.005001)
+    33. feature name: ctc_missing (0.004890)
+    34. feature name: fruits_or_vegetables_f (0.004633)
+    35. feature name: fruits_or_vegetables_t (0.003765)
+    36. feature name: vegetable_type (0.002568)
+    37. feature name: ctc_t (0.002389)
+    38. feature name: green_vegetables_t (0.001768)
+    39. feature name: green_vegetables_f (0.001669)
+    40. feature name: hobby_football (0.000375)
+    41. feature name: hobby_volleyball (0.000333)
+    42. feature name: AP_t (0.000070)
+    43. feature name: AP_f (0.000070)
+    44. feature name: hobby_noball (0.000056)
+    45. feature name: year_creation_date_request (0.000000)
+    46. feature name: year_creation_date_answer (0.000000)
+
+
+
+![png](output_73_1.png)
+
+Le top 3 des variables les plus contributrices sont "location", "id_group_3", "id_group_4",
+Nous retrouvons majoritairement les variables TE encodés dans le top des variables contributrices.
+Les variables de dates sont aussi presentes dans le top 15 ( week, day, hour ect).
+Cependant, la plupart des variables encodé avec le one hot encoding se retrouvent en queue de distriubtion, elles ne contribuent presque pas.
+# Modele 2 : Xgboost classifieur
+
+
+```python
+
+xgbc = XGBClassifier(objective="multi:softprob", seed=77)
+
+#param_grid_xgb = {
+#    'max_depth': [8 ,10,12],
+#    'n_estimators': [1000, 1200],
+#    'learning_rate': [0.1, 0.3, 0,01]
+    
+#}
+
+param_grid_xgb = {
+    'max_depth': [8],
+    'n_estimators': [1200],
+    'learning_rate': [0.1]
+    
+}
+
+
+```
+
+    4:1: E265 block comment should start with '# '
+    8:1: W293 blank line contains whitespace
+    9:1: E265 block comment should start with '# '
+    15:1: W293 blank line contains whitespace
+
+
+
+```python
+#grid_xgb = GridSearchCV(estimator=xgbc,param_grid=param_grid_xgb,scoring='neg_log_loss',cv = 10,verbose=True, n_jobs = -1)
+```
+
+
+```python
+#%%time
+#grid_xgb.fit(X_train,y_train, sample_weight=10**y_train )
+
+```
+
+
+```python
+cv_clf = RandomizedSearchCV(estimator=xgbc,
+                         param_distributions=param_grid_xgb,
+                         scoring='neg_log_loss',
+                         #n_iter=5,
+                         verbose=1,
+                        )
+```
+
+    2:26: E128 continuation line under-indented for visual indent
+    3:26: E128 continuation line under-indented for visual indent
+    4:26: E128 continuation line under-indented for visual indent
+    4:26: E265 block comment should start with '# '
+    5:26: E128 continuation line under-indented for visual indent
+    6:25: E124 closing bracket does not match visual indentation
+
+
+
+```python
+%%time
+cv_clf.fit(X_train,y_train, sample_weight=10**y_train )
+```
+
+    /opt/anaconda3/lib/python3.7/site-packages/sklearn/model_selection/_search.py:296: UserWarning: The total space of parameters 1 is smaller than n_iter=10. Running 1 iterations. For exhaustive searches, use GridSearchCV.
+      UserWarning,
+
+
+    Fitting 5 folds for each of 1 candidates, totalling 5 fits
+    CPU times: user 1h 14min 1s, sys: 42.5 s, total: 1h 14min 43s
+    Wall time: 10min 23s
+
+
+
+
+
+    RandomizedSearchCV(estimator=XGBClassifier(base_score=None, booster=None,
+                                               callbacks=None,
+                                               colsample_bylevel=None,
+                                               colsample_bynode=None,
+                                               colsample_bytree=None,
+                                               early_stopping_rounds=None,
+                                               enable_categorical=False,
+                                               eval_metric=None, gamma=None,
+                                               gpu_id=None, grow_policy=None,
+                                               importance_type=None,
+                                               interaction_constraints=None,
+                                               learning_rate=None, max_bin=None,
+                                               max_c...
+                                               max_delta_step=None, max_depth=None,
+                                               max_leaves=None,
+                                               min_child_weight=None, missing=nan,
+                                               monotone_constraints=None,
+                                               n_estimators=100, n_jobs=None,
+                                               num_parallel_tree=None,
+                                               objective='multi:softprob',
+                                               predictor=None, random_state=None,
+                                               reg_alpha=None, ...),
+                       param_distributions={'learning_rate': [0.1],
+                                            'max_depth': [8],
+                                            'n_estimators': [1200]},
+                       scoring='neg_log_loss', verbose=1)
+
+
+
+
+```python
+cv_clf.best_params_
+```
+
+
+
+
+    {'n_estimators': 1200, 'max_depth': 8, 'learning_rate': 0.1}
+
+
+
+
+```python
+xgbc1 = XGBClassifier(objective="multi:softprob", seed=77, **cv_clf.best_params_) # multi:softmax
+```
+
+    1:82: E261 at least two spaces before inline comment
+
+
+
+```python
+xgbc1.fit(X_train, y_train, sample_weight=10**y_train)
+```
+
+
+
+
+    XGBClassifier(base_score=0.5, booster='gbtree', callbacks=None,
+                  colsample_bylevel=1, colsample_bynode=1, colsample_bytree=1,
+                  early_stopping_rounds=None, enable_categorical=False,
+                  eval_metric=None, gamma=0, gpu_id=-1, grow_policy='depthwise',
+                  importance_type=None, interaction_constraints='',
+                  learning_rate=0.1, max_bin=256, max_cat_to_onehot=4,
+                  max_delta_step=0, max_depth=8, max_leaves=0, min_child_weight=1,
+                  missing=nan, monotone_constraints='()', n_estimators=1200,
+                  n_jobs=0, num_parallel_tree=1, objective='multi:softprob',
+                  predictor='auto', random_state=77, reg_alpha=0, ...)
+
+
+
+
+```python
+pred_xgb = xgbc1.predict(X_test)
+preds_xgb_prob = xgbc1.predict_proba(X_test)
+```
+
+
+```python
+print("log loss pour Xgboost classifier sur train: ", log_loss(y_test, preds_xgb_prob))
+```
+
+    log loss pour Xgboost classifier sur train:  0.8673895631085335
+
+
+
+```python
+
+confusion_matrix(pred_xgb, y_test)
+```
+
+
+
+
+    array([[1863,  246,   91,    8],
+           [ 372, 1381,  135,    7],
+           [ 178,  128,  542,   22],
+           [   2,    8,    7,   10]])
+
+
+
+
+```python
+print(classification_report(pred_xgb, y_test))
+```
+
+                  precision    recall  f1-score   support
+    
+               0       0.77      0.84      0.81      2208
+               1       0.78      0.73      0.76      1895
+               2       0.70      0.62      0.66       870
+               3       0.21      0.37      0.27        27
+    
+        accuracy                           0.76      5000
+       macro avg       0.62      0.64      0.62      5000
+    weighted avg       0.76      0.76      0.76      5000
+    
+
+Le modele xgboost classifier obtient un meilleur score de log que celui du random forest: 0.86
+La matrice de confusion est meilleure que celle du random forest.
+
+Le f1-score globale est de 0,76 par rapport au 0,53 du random forest.
+L'indicateur de precision (le nombre de prédictions positifs bien effectuées) est mieux sur toutes les classes sur le xgboost que sur le rf.
+
+Même constat sur l'indicateur de rappel(recall :permet de savoir le pourcentage de positifs bien prédit par le modèle, plus il est elevé plus le modèle de Machine Learning maximise le nombre de Vrai Positif).
+
+A noter, une degradation sur le recall de la classe 0 ( 0.84 modele xgb vs 0.98 modele RF).
+
+
+```python
+def plot_feature_importance_xgb(data, model):
+    sorted_idx = model.feature_importances_.argsort()
+    plt.figure(figsize=(16, 12))
+    plt.barh(data.columns[sorted_idx], model.feature_importances_[sorted_idx])
+    plt.xlabel("Xgboost Feature Importance")
+    return plt.show()
+```
+
+
+```python
+plot_feature_importance_xgb(X_train, xgbc1)
+```
+
+
+![png](output_90_0.png)
+
+Le top 3 des variables contributrices est le même que pour le random forest.
+Nous retrouvons ensuite les variables de dates crées et les variables encodés avec le target encoding.
+# Predict sur test
+
+
+```python
+predict_train = xgbc1.predict_proba(df_test_te)
+
+```
+
+
+```python
+df_test_te
 ```
 
 
@@ -2663,21 +2618,21 @@ df_test_te.head(3)
   <thead>
     <tr style="text-align: right;">
       <th></th>
-      <th>x0_f</th>
-      <th>x0_t</th>
-      <th>x1_f</th>
-      <th>x1_missing</th>
-      <th>x1_t</th>
-      <th>x2_clementine</th>
-      <th>x2_poire</th>
-      <th>x3_f</th>
-      <th>x3_missing</th>
-      <th>x3_t</th>
-      <th>x4_football</th>
-      <th>x4_noball</th>
-      <th>x4_volleyball</th>
-      <th>x5_f</th>
-      <th>x5_t</th>
+      <th>AP_f</th>
+      <th>AP_t</th>
+      <th>ctc_f</th>
+      <th>ctc_missing</th>
+      <th>ctc_t</th>
+      <th>favorite_fruit_clementine</th>
+      <th>favorite_fruit_poire</th>
+      <th>fruits_or_vegetables_f</th>
+      <th>fruits_or_vegetables_missing</th>
+      <th>fruits_or_vegetables_t</th>
+      <th>hobby_football</th>
+      <th>hobby_noball</th>
+      <th>hobby_volleyball</th>
+      <th>green_vegetables_f</th>
+      <th>green_vegetables_t</th>
       <th>situation</th>
       <th>location</th>
       <th>gc_id</th>
@@ -2790,7 +2745,7 @@ df_test_te.head(3)
       <td>0.689312</td>
       <td>NaN</td>
       <td>0.685889</td>
-      <td>0.69052</td>
+      <td>0.690520</td>
       <td>13</td>
       <td>11</td>
       <td>3</td>
@@ -2839,7 +2794,7 @@ df_test_te.head(3)
       <td>0.694196</td>
       <td>0.695943</td>
       <td>0.690957</td>
-      <td>0.69052</td>
+      <td>0.690520</td>
       <td>7</td>
       <td>2</td>
       <td>1</td>
@@ -2888,7 +2843,7 @@ df_test_te.head(3)
       <td>0.686721</td>
       <td>NaN</td>
       <td>0.686266</td>
-      <td>0.69052</td>
+      <td>0.690520</td>
       <td>25</td>
       <td>4</td>
       <td>1</td>
@@ -2908,617 +2863,592 @@ df_test_te.head(3)
       <td>14</td>
       <td>4</td>
     </tr>
+    <tr>
+      <th>701e90ca03ce2</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>10</td>
+      <td>45</td>
+      <td>40</td>
+      <td>0.695111</td>
+      <td>0.685894</td>
+      <td>0.685894</td>
+      <td>200</td>
+      <td>0.508120</td>
+      <td>2</td>
+      <td>0.688050</td>
+      <td>0.685894</td>
+      <td>0.685894</td>
+      <td>0.690520</td>
+      <td>16</td>
+      <td>3</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>14</td>
+      <td>2</td>
+      <td>7</td>
+      <td>45</td>
+      <td>11</td>
+      <td>2018</td>
+      <td>13</td>
+      <td>2</td>
+      <td>16</td>
+      <td>3</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>14</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <th>768fefec8609a</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>10</td>
+      <td>95</td>
+      <td>100</td>
+      <td>0.691729</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>50</td>
+      <td>0.706915</td>
+      <td>2</td>
+      <td>0.696938</td>
+      <td>NaN</td>
+      <td>0.685871</td>
+      <td>0.690520</td>
+      <td>11</td>
+      <td>7</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>14</td>
+      <td>0</td>
+      <td>16</td>
+      <td>42</td>
+      <td>10</td>
+      <td>2018</td>
+      <td>10</td>
+      <td>1</td>
+      <td>11</td>
+      <td>7</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>14</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>3232bad9c00cc</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>-1</td>
+      <td>60</td>
+      <td>10</td>
+      <td>0.650298</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>200</td>
+      <td>0.508120</td>
+      <td>0</td>
+      <td>0.685615</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>11</td>
+      <td>7</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>9</td>
+      <td>0</td>
+      <td>8</td>
+      <td>6</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>15</td>
+      <td>4</td>
+      <td>11</td>
+      <td>7</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>9</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>7b178c38ad263</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>-1</td>
+      <td>45</td>
+      <td>10</td>
+      <td>0.650298</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>200</td>
+      <td>0.508120</td>
+      <td>-1</td>
+      <td>0.688050</td>
+      <td>0.690520</td>
+      <td>0.688054</td>
+      <td>0.690520</td>
+      <td>23</td>
+      <td>4</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>9</td>
+      <td>2</td>
+      <td>18</td>
+      <td>51</td>
+      <td>12</td>
+      <td>2018</td>
+      <td>11</td>
+      <td>1</td>
+      <td>23</td>
+      <td>4</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>9</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <th>5876ad905d4b4</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>-1</td>
+      <td>58</td>
+      <td>10</td>
+      <td>0.650298</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>10</td>
+      <td>0.751629</td>
+      <td>-1</td>
+      <td>0.687479</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>10</td>
+      <td>10</td>
+      <td>3</td>
+      <td>2019</td>
+      <td>7</td>
+      <td>6</td>
+      <td>27</td>
+      <td>9</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>11</td>
+      <td>2</td>
+      <td>10</td>
+      <td>10</td>
+      <td>3</td>
+      <td>2019</td>
+      <td>7</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <th>5921ef2921c68</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>-1</td>
+      <td>60</td>
+      <td>20</td>
+      <td>0.693432</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>200</td>
+      <td>0.508120</td>
+      <td>-1</td>
+      <td>0.685625</td>
+      <td>NaN</td>
+      <td>0.690520</td>
+      <td>0.691584</td>
+      <td>27</td>
+      <td>9</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>16</td>
+      <td>2</td>
+      <td>9</td>
+      <td>32</td>
+      <td>8</td>
+      <td>2018</td>
+      <td>8</td>
+      <td>3</td>
+      <td>27</td>
+      <td>9</td>
+      <td>2</td>
+      <td>2019</td>
+      <td>16</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <th>d4152ad641c9f</th>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>-1</td>
+      <td>13</td>
+      <td>20</td>
+      <td>0.693432</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>200</td>
+      <td>0.508120</td>
+      <td>0</td>
+      <td>0.691246</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>0.690520</td>
+      <td>1</td>
+      <td>1</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>7</td>
+      <td>1</td>
+      <td>31</td>
+      <td>44</td>
+      <td>10</td>
+      <td>2018</td>
+      <td>7</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>1</td>
+      <td>2019</td>
+      <td>7</td>
+      <td>1</td>
+    </tr>
   </tbody>
 </table>
+<p>25000 rows × 46 columns</p>
 </div>
 
 
 
-# Modelisation
-
 
 ```python
-df_train_te.to_csv('df_train_clean.csv',index=False)
+df_pred_train = pd.concat([pd.DataFrame(df_test_te.index),
+                     pd.DataFrame(predict_train)],
+                    axis=1)
 ```
 
-    1:40: E231 missing whitespace after ','
+    2:22: E128 continuation line under-indented for visual indent
+    3:21: E128 continuation line under-indented for visual indent
 
 
 
 ```python
-
-```
-
-
-```python
-from sklearn.ensemble import RandomForestClassifier
-
-X = df_train_te.drop('target',axis=1)
-y = df_train_te.target
-
-from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 77, stratify=y)
-```
-
-    3:30: E231 missing whitespace after ','
-    6:1: E402 module level import not at top of file
-    7:68: E251 unexpected spaces around keyword / parameter equals
-    7:70: E251 unexpected spaces around keyword / parameter equals
-    7:88: E251 unexpected spaces around keyword / parameter equals
-    7:90: E251 unexpected spaces around keyword / parameter equals
-
-
-# Random Forest classifier
-
-
-```python
-rfc=RandomForestClassifier(random_state=77)
-```
-
-    1:4: E225 missing whitespace around operator
-
-
-
-```python
-%%time
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-param_grid ={
-    'n_estimators': [500,800,1000],
-    'max_features':['auto'],
-    'max_depth':[5 ,8, 10, 12],
-    'criterion':['gini']
-
-}
-
-cv_rfc = RandomizedSearchCV(estimator=rfc,
-                         param_distributions=param_grid,
-                         scoring='neg_log_loss',
-                         n_iter=2,
-                         verbose=1,
-                        n_jobs = -1)
-
-
-#cv_rfc = GridSearchCV(rfc, param_grid,cv=10, scoring='neg_log_loss',verbose=1)
-
-```
-
-    CPU times: user 24 µs, sys: 4 µs, total: 28 µs
-    Wall time: 35.8 µs
-
-
-
-```python
-cv_rfc 
+df_pred_train
 ```
 
 
 
 
-    RandomizedSearchCV(estimator=RandomForestClassifier(random_state=77), n_iter=2,
-                       n_jobs=-1,
-                       param_distributions={'criterion': ['gini'],
-                                            'max_depth': [5, 8, 10, 12],
-                                            'max_features': ['auto'],
-                                            'n_estimators': [500, 800, 1000]},
-                       scoring='neg_log_loss', verbose=1)
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>id</th>
+      <th>0</th>
+      <th>1</th>
+      <th>2</th>
+      <th>3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>cb7a4e0dd0777</td>
+      <td>0.999483</td>
+      <td>0.000517</td>
+      <td>6.529125e-09</td>
+      <td>1.658142e-09</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>e78e3915f3e30</td>
+      <td>0.000133</td>
+      <td>0.972037</td>
+      <td>2.780657e-02</td>
+      <td>2.341822e-05</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>8e65ba155f983</td>
+      <td>0.999995</td>
+      <td>0.000005</td>
+      <td>1.783282e-08</td>
+      <td>1.264612e-10</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>701e90ca03ce2</td>
+      <td>0.999995</td>
+      <td>0.000004</td>
+      <td>3.404137e-07</td>
+      <td>7.789070e-09</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>768fefec8609a</td>
+      <td>0.999995</td>
+      <td>0.000001</td>
+      <td>1.280887e-06</td>
+      <td>2.270629e-06</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>24995</th>
+      <td>3232bad9c00cc</td>
+      <td>0.997279</td>
+      <td>0.000231</td>
+      <td>2.442969e-03</td>
+      <td>4.749723e-05</td>
+    </tr>
+    <tr>
+      <th>24996</th>
+      <td>7b178c38ad263</td>
+      <td>0.184919</td>
+      <td>0.044436</td>
+      <td>7.706341e-01</td>
+      <td>1.087935e-05</td>
+    </tr>
+    <tr>
+      <th>24997</th>
+      <td>5876ad905d4b4</td>
+      <td>0.002254</td>
+      <td>0.997745</td>
+      <td>4.836485e-07</td>
+      <td>3.590272e-07</td>
+    </tr>
+    <tr>
+      <th>24998</th>
+      <td>5921ef2921c68</td>
+      <td>0.999994</td>
+      <td>0.000006</td>
+      <td>2.167044e-09</td>
+      <td>9.040671e-09</td>
+    </tr>
+    <tr>
+      <th>24999</th>
+      <td>d4152ad641c9f</td>
+      <td>0.000360</td>
+      <td>0.002784</td>
+      <td>9.968233e-01</td>
+      <td>3.321608e-05</td>
+    </tr>
+  </tbody>
+</table>
+<p>25000 rows × 5 columns</p>
+</div>
 
 
 
 
 ```python
-10**y_train
-```
-
-
-
-
-    9785        1
-    23011       1
-    16926      10
-    12398       1
-    7075        1
-             ... 
-    17068     100
-    7515       10
-    219      1000
-    2307        1
-    15159       1
-    Name: target, Length: 20000, dtype: int64
-
-
-
-
-```python
-%%time
-cv_rfc.fit(X_train,y_train, sample_weight=10**y_train )
-```
-
-    Fitting 5 folds for each of 2 candidates, totalling 10 fits
-
-
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
-      "pandas.DataFrame with sparse columns found."
-
-
-    CPU times: user 13.7 s, sys: 204 ms, total: 13.9 s
-    Wall time: 45.4 s
-
-
-
-
-
-    RandomizedSearchCV(estimator=RandomForestClassifier(random_state=77), n_iter=2,
-                       n_jobs=-1,
-                       param_distributions={'criterion': ['gini'],
-                                            'max_depth': [5, 8, 10, 12],
-                                            'max_features': ['auto'],
-                                            'n_estimators': [500, 800, 1000]},
-                       scoring='neg_log_loss', verbose=1)
-
-
-
-
-```python
-cv_rfc.best_params_
-```
-
-
-
-
-    {'n_estimators': 1000,
-     'max_features': 'auto',
-     'max_depth': 10,
-     'criterion': 'gini'}
-
-
-
-
-```python
-cv_rfc.best_estimator_
-```
-
-
-
-
-    RandomForestClassifier(max_depth=10, n_estimators=1000, random_state=77)
-
-
-
-
-```python
-from sklearn.metrics import log_loss
-rfc1=RandomForestClassifier(random_state=77,**cv_rfc.best_params_)
-```
-
-    2:5: E225 missing whitespace around operator
-    2:44: E231 missing whitespace after ','
-
-
-
-```python
-rfc1.fit(X_train, y_train, sample_weight=10**y_train )
-```
-
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
-      "pandas.DataFrame with sparse columns found."
-
-
-
-
-
-    RandomForestClassifier(max_depth=10, n_estimators=1000, random_state=77)
-
-
-
-    1:53: E202 whitespace before ')'
-
-
-
-```python
-pred_rfc = rfc1.predict(X_test)
-preds_rfc_prob = rfc1.predict_proba(X_test)
-```
-
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
-      "pandas.DataFrame with sparse columns found."
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py:625: UserWarning: pandas.DataFrame with sparse columns found.It will be converted to a dense numpy array.
-      "pandas.DataFrame with sparse columns found."
-
-
-
-```python
-from sklearn.metrics import confusion_matrix, classification_report, make_scorer
-print(classification_report(pred_rfc, y_test))
-```
-
-    1:80: E501 line too long (80 > 79 characters)
-
-
-                  precision    recall  f1-score   support
-    
-               0       0.30      1.00      0.46       718
-               1       0.55      0.72      0.62      1346
-               2       0.95      0.25      0.40      2908
-               3       0.23      0.39      0.29        28
-    
-        accuracy                           0.49      5000
-       macro avg       0.51      0.59      0.44      5000
-    weighted avg       0.75      0.49      0.47      5000
-    
-
-
-
-```python
-from sklearn.metrics import log_loss
-print("log loss pour RF classifier sur train:",log_loss(y_test,preds_rfc_prob ))
-```
-
-    2:47: E231 missing whitespace after ','
-    2:63: E231 missing whitespace after ','
-    2:78: E202 whitespace before ')'
-
-
-    log loss pour RF classifier sur train: 1.2685943581309025
-
-
-
-```python
- confusion_matrix(pred_rfc, y_test)
-```
-
-
-
-
-    array([[ 718,    0,    0,    0],
-           [ 348,  971,   27,    0],
-           [1346,  787,  739,   36],
-           [   3,    5,    9,   11]])
-
-
-
-    1: E999 IndentationError: unexpected indent
-    1:2: E111 indentation is not a multiple of four
-    1:2: E113 unexpected indentation
-
-
-
-```python
-def plot_feature_importance(df,model):
-    
-    importances = model.best_estimator_.feature_importances_
-    print()
-    std = np.std([tree.feature_importances_ for tree in model.best_estimator_.estimators_],axis=0)
-    indices = np.argsort(importances)[::-1]
-    print(len(indices))
-    print(len(df.columns))
-    names = [df.columns[i] for i in indices]
-    
-    # Print the feature ranking
-    
-    print("Feature ranking:")
-    for f in range(X_test.shape[1]):
-        print("%d. feature name: %s (%f)" % (f + 1, names[f], importances[indices[f]]))
-        
-    # Plot the feature importances of the forest
-    plt.figure(figsize=(16,12))
-    plt.title("Feature importances")
-    plt.bar(range(df.shape[1]), importances[indices],color="r", yerr=std[indices], align="center")
-    plt.xticks(range(df.shape[1]), names, rotation=90)
-    plt.xlim([-1,df.shape[1]])
-    return plt.show()
-```
-
-    1:31: E231 missing whitespace after ','
-    2:1: W293 blank line contains whitespace
-    5:80: E501 line too long (98 > 79 characters)
-    5:91: E231 missing whitespace after ','
-    10:1: W293 blank line contains whitespace
-    12:1: W293 blank line contains whitespace
-    15:80: E501 line too long (87 > 79 characters)
-    16:1: W293 blank line contains whitespace
-    18:27: E231 missing whitespace after ','
-    20:53: E231 missing whitespace after ','
-    20:80: E501 line too long (98 > 79 characters)
-    22:17: E231 missing whitespace after ','
-
-
-
-```python
-plot_feature_importance(X_train,cv_rfc)
-```
-
-    
-    46
-    46
-    Feature ranking:
-    1. feature name: location (0.128993)
-    2. feature name: id_group_3 (0.085039)
-    3. feature name: id_group (0.070668)
-    4. feature name: id_group_4 (0.068500)
-    5. feature name: id_group_2 (0.066407)
-    6. feature name: week_creation_date_global (0.044707)
-    7. feature name: day_creation_date_global (0.035120)
-    8. feature name: hour_creation_date_answer (0.033469)
-    9. feature name: hour_creation_date_request (0.032637)
-    10. feature name: month_creation_date_global (0.030478)
-    11. feature name: fruit_situation_label (0.030274)
-    12. feature name: fruit_situation_id (0.030077)
-    13. feature name: hour_creation_date_global (0.028849)
-    14. feature name: day_creation_date_answer (0.028601)
-    15. feature name: day_creation_date_request (0.028073)
-    16. feature name: ville (0.023618)
-    17. feature name: weekday_creation_date_global (0.023538)
-    18. feature name: weekday_creation_date_request (0.023277)
-    19. feature name: weekday_creation_date_answer (0.022842)
-    20. feature name: week_creation_date_request (0.020309)
-    21. feature name: week_creation_date_answer (0.019946)
-    22. feature name: gc_label (0.019798)
-    23. feature name: gc_id (0.016933)
-    24. feature name: year_creation_date_global (0.010740)
-    25. feature name: number_of_fruit (0.010016)
-    26. feature name: x2_clementine (0.007700)
-    27. feature name: month_creation_date_request (0.007655)
-    28. feature name: month_creation_date_answer (0.007634)
-    29. feature name: situation (0.007311)
-    30. feature name: x2_poire (0.006682)
-    31. feature name: x3_missing (0.004632)
-    32. feature name: x1_missing (0.004435)
-    33. feature name: x3_f (0.004205)
-    34. feature name: x1_f (0.004188)
-    35. feature name: x3_t (0.003872)
-    36. feature name: vegetable_type (0.002484)
-    37. feature name: x1_t (0.002480)
-    38. feature name: x5_f (0.001759)
-    39. feature name: x5_t (0.001443)
-    40. feature name: x4_football (0.000259)
-    41. feature name: x4_volleyball (0.000227)
-    42. feature name: x0_t (0.000049)
-    43. feature name: x0_f (0.000042)
-    44. feature name: x4_noball (0.000034)
-    45. feature name: year_creation_date_request (0.000000)
-    46. feature name: year_creation_date_answer (0.000000)
-
-
-
-![png](output_75_1.png)
-
-
-    1:32: E231 missing whitespace after ','
-
-
-# Modele 2 : Xgboost classifieur
-
-
-```python
-from xgboost import XGBClassifier
-xgbc = XGBClassifier(objective="multi:softprob",seed=77)
-
-param_grid_xgb = {
-    'max_depth': [8 ,12],
-    'n_estimators': [500,1000, 1200],
-    'learning_rate': [0.1]
-    
-}
-
-
-```
-
-
-```python
-grid_xgb = GridSearchCV(estimator=xgbc,param_grid=param_grid_xgb,scoring='neg_log_loss',cv = 10,verbose=True, n_jobs = -1)
-```
-
-
-```python
-from xgboost import XGBClassifier
-xgbc = XGBClassifier(objective="multi:softprob",seed=77)
-```
-
-    2:48: E231 missing whitespace after ','
-
-
-
-```python
-from sklearn.model_selection import RandomizedSearchCV
-
-params = { 'max_depth': [ 8,10],
-           'learning_rate': [0.1],
-           'n_estimators': [1000,1200]}
-
-cv_clf = RandomizedSearchCV(estimator=xgbc,
-                         param_distributions=params,
-                         scoring='neg_log_loss',
-                         n_iter=5,
-                         verbose=1,
-                        n_jobs = -1)
-```
-
-    3:11: E201 whitespace after '{'
-    3:26: E201 whitespace after '['
-    3:28: E231 missing whitespace after ','
-    5:33: E231 missing whitespace after ','
-    8:26: E128 continuation line under-indented for visual indent
-    9:26: E128 continuation line under-indented for visual indent
-    10:26: E128 continuation line under-indented for visual indent
-    11:26: E128 continuation line under-indented for visual indent
-    12:25: E128 continuation line under-indented for visual indent
-    12:31: E251 unexpected spaces around keyword / parameter equals
-    12:33: E251 unexpected spaces around keyword / parameter equals
-
-
-
-```python
-%%time
-cv_clf.fit(X_train,y_train, sample_weight=10**y_train )
-```
-
-    Fitting 5 folds for each of 4 candidates, totalling 20 fits
-
-
-    /opt/anaconda3/lib/python3.7/site-packages/sklearn/model_selection/_search.py:296: UserWarning: The total space of parameters 4 is smaller than n_iter=5. Running 4 iterations. For exhaustive searches, use GridSearchCV.
-      UserWarning,
-
-
-
-```python
-%%time
-grid_xgb.fit(X_train,y_train, sample_weight=10**y_train )
-
-```
-
-
-```python
-cv_clf.best_params_
-```
-
-
-
-
-    {'subsample': 0.6, 'n_estimators': 1000, 'max_depth': 6, 'learning_rate': 0.1}
-
-
-
-
-```python
-xgbc1 = XGBClassifier(objective="multi:softprob",seed=77,**cv_clf.best_params_)#multi:softmax
-```
-
-
-```python
-xgbc1.fit(X_train, y_train, sample_weight=10**y_train )
-```
-
-
-
-
-    XGBClassifier(base_score=0.5, booster='gbtree', callbacks=None,
-                  colsample_bylevel=1, colsample_bynode=1, colsample_bytree=1,
-                  early_stopping_rounds=None, enable_categorical=False,
-                  eval_metric=None, gamma=0, gpu_id=-1, grow_policy='depthwise',
-                  importance_type=None, interaction_constraints='',
-                  learning_rate=0.1, max_bin=256, max_cat_to_onehot=4,
-                  max_delta_step=0, max_depth=6, max_leaves=0, min_child_weight=1,
-                  missing=nan, monotone_constraints='()', n_estimators=1000,
-                  n_jobs=0, num_parallel_tree=1, objective='multi:softprob',
-                  predictor='auto', random_state=77, reg_alpha=0, ...)
-
-
-
-
-```python
-
-```
-
-
-```python
-#to do : feature importance
-#explication du choix du random search au depend du grid search
-#temps d'execution plus rapide avec le randomsearch 
-```
-
-
-```python
-pred_xgb = xgbc1.predict(X_test)
-preds_xgb_prob = xgbc1.predict_proba(X_test)
-```
-
-
-```python
-print("log loss pour Xgboost classifier sur train: ",log_loss(y_test,preds_xgb_prob ))
-```
-
-    log loss pour Xgboost classifier sur train:  0.7706793167718975
-
-
-
-```python
-print(classification_report(pred_xgb, y_test))
-```
-
-                  precision    recall  f1-score   support
-    
-               0       0.70      0.86      0.77      1956
-               1       0.80      0.70      0.75      2006
-               2       0.75      0.57      0.64      1021
-               3       0.11      0.29      0.16        17
-    
-        accuracy                           0.74      5000
-       macro avg       0.59      0.61      0.58      5000
-    weighted avg       0.75      0.74      0.73      5000
-    
-
-
-
-```python
-from sklearn.metrics import confusion_matrix, classification_report, make_scorer
-confusion_matrix(pred_xgb, y_test)
-```
-
-
-
-
-    array([[1688,  188,   74,    6],
-           [ 474, 1406,  115,   11],
-           [ 250,  167,  579,   25],
-           [   3,    2,    7,    5]])
-
-
-
-
-```python
-import lightgbm
-```
-
-    /opt/anaconda3/lib/python3.7/site-packages/lightgbm/__init__.py:48: UserWarning: Starting from version 2.2.1, the library file in distribution wheels for macOS is built by the Apple Clang (Xcode_8.3.3) compiler.
-    This means that in case of installing LightGBM from PyPI via the ``pip install lightgbm`` command, you don't need to install the gcc compiler anymore.
-    Instead of that, you need to install the OpenMP library, which is required for running LightGBM on the system with the Apple Clang compiler.
-    You can install the OpenMP library by the following command: ``brew install libomp``.
-      "You can install the OpenMP library by the following command: ``brew install libomp``.", UserWarning)
-
-
-
-```python
-lgb = lightgbm.LGBMClassifier(
-                     objective='logloss')
-
-lgb.fit(X_train, y_train, sample_weight=10**y)
-```
-
-
-```python
-
+df_pred_train.to_csv('resultat_test.csv')
 ```
 
 # Conclusion
+Une classification multiclasse sur un jeu de données deséquilibré.
+J'ai passé beaucoup de temps sur la partie encodage de variable et sur la partie création de nouvelle variable.
+Le one hot encoding n'a pas semblé etre efficace comparé au target encoding.
+
+Concernant les modelisations et les contraintes de l'enoncé, je me suis documenté pour trouver une solution pour penaliser les classes elevés.
+Une autre maniere de penaliser les classes (technique du sample_weight) aurait été de developper une fonction pour affecter une contrainte a chaque classe.
+J'aurais voulu tester un SVM pour la classification mais j'ai perdu beaucoup de temps à faire tourner les modeles avec le grid search et ensuite avec le random search.
+
+Le parmametre "neg_log_loss" augmente drastiquement les temps de calcul, ce qui n'a pas été facile pour tuner au mieux les hyperparametres.
+
+Le randomforest n'a pas eu les resultats que j'esperais. Le modele de xgboost peut faire beaucoup mieux avec un parametrage plus fin.
 
 ## Ouverture
+Listing des taches possibles à faire dans le cadre d'un projet de bout en bout.
 
 Feature engineering:
-    - Creer des variables supplementaires par des interractions de variables 
-    - Encodage du label encoding à la place du ohe
-    - Calibration des parametres de prior pour le TE
-    - Optimiser la selection de variables
-    - Reduction de dimension (ACP)
-    - Standardiser les variables
+    - Creer des variables supplementaires par des interractions de variables.
+    - Encodage du label encoding à la place du ohe.
+    - Calibration des parametres de prior pour le TE.
+    - Optimiser la selection de variables (stepwise ou backward regression)
+    - Reduction de dimension (ACP).
+    - Standardiser les variables.
     
 Modelisation:
-    - Test de modele de multiclass comme le SVM
-    - Tester logistic regression en one vs all 
-    - Tester les algorithmes comme le catboost ou light gbm
-    - Bagging et stacking de modeles
+    - Test de modele de multiclass comme le SVM.
+    - Tester logistic regression en one vs all.
+    - Tester les algorithmes comme le catboost ou light gbm.
+    - Bagging et stacking de modeles.
     
 Resultats:
-    - Test d'autres criteres de validation de performance comme l'indicateur de gini normalisé 
+    - Test d'autres criteres de validation de performance comme l'indicateur de gini normalisé.
 
 Mise en production:
-    -Pipeline pour sequencer le feature engineering, l'encodage et le nettoyage de la base
-    - Pipeline pour l'application des modeles
+    - Mettre les fonctions dans un fichier .py
+    - Pipeline pour sequencer le feature engineering, l'encodage et le nettoyage de la base.
+    - Pipeline pour l'application des modeles.
     
 
 
     
     
-
 
 ```python
 
